@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Stitch{% endblock %}
+{% block body %}
+  <div class="navbar">
+   {% for id in keywords.keys() %}
+      <div class="navelement">
+	{% if id == k_id %}
+	  <b>{{ keywords[id] }}</b>
+	{% else %}
+	  <a href="{{ url_for('stitch', k_id=id) }}">{{ keywords[id] }}</a>
+	{% endif %}
+      </div>
+    {% endfor %}
+  </div>
+  <div class="navbar">
+    {% for state in states %}
+      <div class="navelement">
+	<a href="#{{ state }}">{{ state }}</a>
+      </div>
+    {% endfor %}
+  </div>
+  {% for state in states %}
+    <h3 id="{{ state }}">{{ state }}</h3>
+    <img src="{{ url_for('ts', k_id=k_id, iso=state) }}"><br>
+    <a href="{{ url_for('csv', k_id=k_id, iso=state) }}">Download as CSV</a><br/>
+  {% endfor %}
+{% endblock %}

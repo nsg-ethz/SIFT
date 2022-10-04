@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Duplicate Compare{% endblock %}
+{% block body %}
+  <table>
+    <tr><td><b>Start:</b></td><td>{{ start }}</td></tr>
+    <tr><td><b>End:</b></td><td>{{ end }}</td></tr>
+    <tr><td><b>Keyword:</b></td>
+      <td><a href="{{ url_for('keyword_detailed', k_id=k_id) }}">{{ k_pretty }}</a></td></tr>
+    <tr><td><b>Geography:</b></td><td>{{ iso }}</td></tr>
+  </table>
+  <ul>
+    {% for r_id, r_ts, _ in res %}
+      <li>{{ r_id }} fetched at {{ r_ts }}
+    {% endfor %}
+  </ul>
+  {{ daily | safe }}
+{% endblock %}

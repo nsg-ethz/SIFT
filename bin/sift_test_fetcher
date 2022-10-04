@@ -1,0 +1,20 @@
+#! /usr/bin/python3
+
+import glob
+import shlex
+import sys
+
+args = sys.argv[1:]
+
+for name in glob.glob('test/*'):
+    with open(name) as f:
+        first_line = f.readline().rstrip()
+        if first_line[:2] != '# ':
+            print('Malformed input file {}'.format(name), file=sys.stderr)
+            sys.exit(1)
+
+        if shlex.split(first_line[2:]) == args:
+            print(f.read(), end='')
+            sys.exit(0)
+
+sys.exit(1)

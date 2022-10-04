@@ -1,0 +1,33 @@
+<html>
+  <head>
+    <title>{% block title %}{% endblock %}</title>
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+    {% block head %}{% endblock %}
+  </head>
+  <body>
+    <div class="navbar">
+      {% for p in ['index', 'keywords', 'requests', 'timeframes', 'tags', 'topics', 'locations', 'stitch', 'overlap', 'ignored_keywords', 'timeframe_search', 'duplicates', 'keyword_statistics', 'keyword_diff'] %}
+	<div class="navelement">
+	  {% if p == request.url_rule.endpoint %}
+	    <b>{{ p | replace('_', ' ') | title }}</b>
+	  {% else %}
+	    <a href="{{ url_for(p) }}">{{ p | replace('_', ' ') | title }}</a>
+	  {% endif %}
+	</div>
+      {% endfor %}
+      <div class="navelement">
+	{% if request.url_rule %}
+	  {% if request.url_rule.endpoint == 'help' %}
+	    <b>Help</b>
+	  {% else %}
+	    <a href="{{ url_for('help_page') }}#{{ request.url_rule.endpoint }}">Help</a>
+	  {% endif %}
+	{% else %}
+	  <a href="{{ url_for('help_page') }}">Help</a>
+	{% endif %}
+      </div>
+    </div>
+    {% block body %}
+    {% endblock %}
+  </body>
+</html>

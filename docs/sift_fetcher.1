@@ -1,0 +1,32 @@
+.Dd June 9, 2022
+.Dt SIFT_FETCHER 1
+.Os
+.Sh NAME
+.Nm sift_fetcher
+.Nd fetches data from Google Trends
+.Sh SYNOPSIS
+.Nm sift_fetcher
+.Ar tf
+.Ar kw
+.Op Ar geo
+.Sh DESCRIPTION
+.Nm
+fetches data from Trends for the time frame indicated by string
+.Ar tf
+for the keyword
+.Ar kw .
+.Ar geo
+can be used to restrict the geography.
+.Pp
+.Nm
+logs its actions to a file
+.Pa fetcher-hostname.log
+in the current directory, with hostname replaced by the hostname of
+the machine.
+.Pp
+.Nm
+should not be executed directly, but rather by
+.Xr sift_dispatcher 1 .
+.Sh EXIT STATUS
+.Ex -std
+An exit status of 5 indicated that pytrends raised a ResponseError.

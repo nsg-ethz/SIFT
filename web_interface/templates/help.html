@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Help{% endblock %}
+{% block body %}
+  {% for rule, endpoint, doc in rules|sort(attribute=0) %}
+    <h4 id="{{ endpoint }}">{{ endpoint }} ({{ rule }})</h4>
+    {% if doc %}
+      {{ doc }}
+    {% else %}
+      No documentation
+    {% endif %}
+  {% endfor %}
+{% endblock %}

@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Topics{% endblock %}
+{% block body %}
+<table>
+  <tr><th>Id<th>Name<th>Number of keywords
+  {% for tp in topics %}
+  <tr><td><a href="{{ url_for ('topic_detailed', kt_id=tp[0]) }}">{{ tp[0] }}</a>
+    <td>{{ tp[1] }}<td>{{ tp[2] }}</tr>
+  {% endfor %}
+</table>
+{% endblock %}

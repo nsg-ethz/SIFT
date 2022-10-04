@@ -1,0 +1,39 @@
+.Dd June 23, 2022
+.Dt SIFT_TEST_FETCHER 1
+.Os
+.Sh NAME
+.Nm sift_test_fetcher
+.Nd drop-in replacement of sift_fetcher for testing purposes
+.Sh SYNOPSIS
+.Nm
+.Ar tf
+.Ar kw
+.Op Ar geo
+.Sh DESCRIPTION
+.Nm
+is a drop-in replacement of
+.Xr sift_fetcher 1
+to test
+.Xr sift_dispatcher 1 .
+When it is called,
+.Nm
+opens all the files in the directory
+.Pa test
+relative to the current working directory.
+Each of these files must start with a hash mark (
+.Sq #
+) followed by a space followed by the arguments which would be passed to
+.Xr sift_fetcher 1
+to obtain the output.
+The arguments must be properly quoted, as would be the case with the
+shell.
+If the arguments match the arguments passed to
+.Nm
+everything after the first line is printed as-is to
+.Dv stdout
+and
+.Nm
+exits.
+If no such file exists or an invalid file is encountered
+.Nm
+exits with a non-zero exit code.

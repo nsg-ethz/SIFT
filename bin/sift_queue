@@ -1,0 +1,347 @@
+#! /usr/bin/python3
+import argparse
+import datetime
+import sys
+
+import psycopg2
+
+con = psycopg2.connect('')
+
+
+def add_rtag_to_rid(cur, rtag, r_id):
+    """
+        Tags a request r_id with tag rtag.  rtag is a string.  If a
+        tag with name rtag does not exist, it is created.
+    """
+    cur.execute('SELECT rtag_id FROM rtags WHERE rtag_name = %s', (rtag,))
+    res = cur.fetchone()
+
+    if res is None:
+        cur.execute('''INSERT INTO rtags(rtag_name) VALUES (%s)
+                       RETURNING rtag_id''', (rtag,))
+        res = cur.fetchone()
+        assert res is not None
+
+    cur.execute('INSERT INTO request_tags (rtag_id, r_id) VALUES (%s, %s)',
+                (res[0], r_id))
+
+
+def insert_or_ignore_who(cur, w):
+    """
+        Returns the id of who with name w in the database.  If w does
+        not exist, it is created.
+    """
+    cur.execute('SELECT rw_id FROM request_who WHERE rw_name = %s', (w,))
+    res = cur.fetchone()
+
+    if res is not None:
+        return res[0]
+
+    cur.execute('''INSERT INTO request_who (rw_name) VALUES (%s)
+                   RETURNING rw_id''', (w,))
+    res = cur.fetchone()
+
+    return res[0]
+
+
+def db_one(cur, sql, args=None):
+    """
+        Returns the first column of the first row from the result of
+        executing sql with args args.  The statement must return at
+        least one row.
+    """
+    if args is None:
+        args = []
+    cur.execute(sql, args)
+    return cur.fetchone()[0]
+
+
+# A copy of this function exists in sift_cli, they should be kept in
+# sync.
+def expand_keywords(cur, kws):
+    """
+        Expand the keyword kws into a list of keywords.  kws can be of
+        the form :k_id, %keyword_tag, a query string or a topic
+        identifier.
+    """
+    if kws[0] == ':':
+        k_id = int(kws[1:])
+        cur.execute('SELECT 1 FROM keywords WHERE k_id = %s', [k_id])
+        if cur.fetchone() is None:
+            print('No keyword with id {}'.format(k_id), file=sys.stderr)
+            sys.exit(1)
+
+        k_ids = [k_id]
+    elif kws[0] == '%':
+        tag_name = kws[1:]
+        cur.execute('''SELECT k_id
+                         FROM tags
+                         JOIN keywords_tags USING (tg_id)
+                        WHERE tg_name = %s''', (tag_name,))
+        k_ids = [r[0] for r in cur]
+    else:
+        k_id = db_one(cur, 'SELECT k_id FROM keywords WHERE k_q = %s', (kws,))
+        k_ids = [k_id]
+
+    if len(k_ids) == 0:
+        print('No keywords for {}'.format(kws), file=sys.stderr)
+        sys.exit(1)
+
+    return k_ids
+
+
+def expand_locations(cur, locations):
+    """
+        Expands a string locations to a list of locations.  The
+        special string world is used for no geographic restrictions.
+        If the string starts with / the part following it is used as a
+        LIKE pattern on the l_iso field in the database.  Otherwise it
+        is taken as a plain l_iso value.
+    """
+    if locations == 'world':
+        l_ids = [(None, 'world')]
+    elif locations[0] == '/':
+        like = locations[1:]
+        cur.execute('SELECT l_id, l_iso FROM locations WHERE l_iso LIKE %s',
+                    (like,))
+        l_ids = cur.fetchall()
+        if len(l_ids) == 0:
+            print('No l_iso values matching {}'.format(like), file=sys.stderr)
+            sys.exit(1)
+    else:
+        cur.execute('SELECT l_id, l_iso FROM locations WHERE l_iso = %s',
+                    (locations,))
+        res = cur.fetchone()
+        if res is None:
+            print('No location called {}'.format(locations), file=sys.stderr)
+            sys.exit(1)
+        l_ids = [res]
+
+    return l_ids
+
+
+def get_default_params(cur):
+    """
+        Lookup the ids of often used values.
+    """
+    params = {}
+    params['rw_id'] = insert_or_ignore_who(cur, 'sift_queue')
+    params['r_type'] = db_one(cur, "SELECT rt_id FROM request_types WHERE rt_type = 'all'")
+    params['r_use'] = db_one(cur, "SELECT ra_id FROM request_api WHERE ra_name = 'pytrends'")
+    params['r_status'] = db_one(cur, "SELECT rs_id FROM request_status WHERE rs_name = 'open'")
+
+    return params
+
+
+def queueone(cur, start, end, k_id, l_id):
+    """
+        Used to queue a single request.  Uses the global params dictionary.
+    """
+    q = cur.mogrify('''SELECT 1
+                         FROM requests
+                    LEFT JOIN keywords_in_request USING (r_id)
+                        WHERE k_id = %s
+                          AND r_tf_start = %s
+                          AND r_tf_end = %s''',
+                    (k_id, start, end))
+    if l_id is None:
+        q += cur.mogrify(' AND r_geo IS NULL')
+    else:
+        q += cur.mogrify(' AND r_geo = %s', (l_id,))
+
+    cur.execute(q)
+    res = cur.fetchone()
+
+    if res is not None and not params['duplicates']:
+        raise AssertionError('it should be checked before queueone if a request already exists')
+
+    if params['dry-run']:
+        print('Queue: ', params['rw_id'], params['r_type'],
+              params['r_use'], l_id, start, end,
+              params['r_status'], params['comment'])
+        for rtag in params['tags']:
+            print('Adding tag {}'.format(rtag))
+        return -1
+
+    with con:
+        cur.execute('''INSERT INTO requests (r_who, r_when, r_type, r_use, r_notbefore, r_notafter,
+                                             r_prio, r_geo, r_tf_start, r_tf_end, r_status, r_note)
+                            VALUES (%s, 'now', %s, %s, 'now', TIMESTAMP 'now' + '7 days',
+                                    1, %s, %s, %s, %s, %s)
+                        RETURNING r_id''',
+                    (params['rw_id'], params['r_type'], params['r_use'],
+                     l_id, start, end, params['r_status'], params['comment']))
+        r_id = cur.fetchone()[0]
+
+        cur.execute('INSERT INTO keywords_in_request(k_id, r_id) VALUES(%s, %s)', (k_id, r_id))
+
+        for rtag in params['tags']:
+            add_rtag_to_rid(cur, rtag, r_id)
+
+    return r_id
+
+
+def queuemany(cur, timeframes, kws, locations):
+    """
+        Queue for each time frame in timeframes.  If kws or locations
+        expand to more than one value the time frame is added for each.
+        timeframes is a list of tuples of the form (start, end).
+    """
+    r_ids = []
+    k_ids = expand_keywords(cur, kws)
+    l_ids = expand_locations(cur, locations)
+
+    for start, end in timeframes:
+        for k_id in k_ids:
+            for l_id, l_iso in l_ids:
+                print('{}-{} {} {}: '.format(start, end, k_id, l_iso), end='', file=sys.stderr)
+                q = cur.mogrify('''SELECT r_id, r_note
+                                     FROM requests
+                                LEFT JOIN keywords_in_request USING (r_id)
+                                    WHERE r_tf_start = %s AND r_tf_end = %s
+                                      AND k_id = %s''', (start, end, k_id))
+                if l_id:
+                    q += cur.mogrify(' AND r_geo = %s', (l_id,))
+                else:
+                    q += cur.mogrify(' AND r_geo IS NULL')
+
+                cur.execute(q)
+                pairs = cur.fetchall()
+                res = [str(x[0]) for x in pairs]
+                if res and not params['duplicates']:
+                    print('already requested with id {}'.format(', '.join(res)), file=sys.stderr)
+                    r_ids.append(-int(res[0]))
+                    continue
+
+                if not res and params['duplicates']:
+                    print('no request exists, but duplicates requested', file=sys.stderr)
+                    continue
+
+                if res and params['duplicates']:
+                    for _, r_note in pairs:
+                        if r_note == params['comment']:
+                            print('trying to queue duplicate request with duplicate comment',
+                                  file=sys.stderr)
+                            sys.exit(1)
+
+                r_ids.append(queueone(cur, start, end, k_id, l_id))
+                print('queued as request {}'.format(r_ids[-1]), file=sys.stderr, end='')
+
+                if params['duplicates']:
+                    print(' duplicate of request {}'.format(', '.join(res)), file=sys.stderr)
+                else:
+                    print('', file=sys.stderr)
+
+    return r_ids
+
+
+def usage(s):
+    print('usage: {} {}'.format(sys.argv[0], s), file=sys.stderr)
+    sys.exit(1)
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--comment', type=str, default=None)
+parser.add_argument('--dry-run', action='store_true')
+parser.add_argument('--duplicates', action='store_true')
+parser.add_argument('--tag', action='append', default=[])
+parser.add_argument('command', type=str)
+parser.add_argument('args', nargs='*')
+arguments = parser.parse_args()
+
+cur = con.cursor()
+
+params = get_default_params(cur)
+params['comment'] = arguments.comment
+params['dry-run'] = arguments.dry_run
+params['duplicates'] = arguments.duplicates
+params['tags'] = arguments.tag
+command = arguments.command
+args = arguments.args
+
+if params['dry-run']:
+    con = psycopg2.connect(dbname='')
+    con.set_session(readonly=True, autocommit=True)
+    cur = con.cursor()
+
+if params['duplicates'] and not params['comment']:
+    print('Duplicates must be annotated with comments', file=sys.stderr)
+    sys.exit(1)
+
+argc = len(args)
+
+if command == 'one':
+    if argc != 4:
+        usage('one start end kw geo')
+
+    timeframes = [(args[0], args[1])]
+
+    queuemany(cur, timeframes, args[2], args[3])
+elif command == 'from-day':
+    if argc != 3:
+        usage('from-day start kw geo')
+
+    from_day = datetime.datetime.fromisoformat(args[0])
+    day = datetime.datetime(from_day.year, from_day.month, from_day.day)
+    timeframes = []
+    while day <= datetime.datetime.today():
+        start = day.strftime('%Y-%m-%d %H:%M')
+        day += datetime.timedelta(hours=4)
+        end = day.strftime('%Y-%m-%d %H:%M')
+        timeframes.append((start, end))
+
+    queuemany(cur, timeframes, args[1], args[2])
+elif command == "fetch-week":
+    if argc != 3:
+        usage('fetch-week start kw geo')
+
+    week = datetime.datetime.fromisoformat(args[0])
+    start_day = datetime.datetime(week.year, week.month, week.day)
+    end_day = start_day + datetime.timedelta(days=7)
+    timeframes = [(start_day, end_day)]
+
+    queuemany(cur, timeframes, args[1], args[2])
+elif command == "overlap-week-fetch":
+    if argc != 4 and argc != 5:
+        usage('overlap-week-fetch start overlap kw geo [end]')
+
+    overlap = int(args[1])
+    if overlap < 0 or overlap >= 7:
+        print('invalid overlap {}'.format(overlap), file=sys.stderr)
+        sys.exit(1)
+
+    from_day = datetime.datetime.fromisoformat(args[0])
+    day = datetime.datetime(from_day.year, from_day.month, from_day.day)
+    timeframes = []
+    if argc == 4:
+        end_date = datetime.datetime.today()
+    else:
+        end_date = datetime.datetime.fromisoformat(args[4])
+
+    while day <= end_date:
+        start = day
+        end = start + datetime.timedelta(days=7)
+        day += datetime.timedelta(days=(7 - overlap))
+
+        timeframes.append((start, end))
+
+    queuemany(cur, timeframes, args[2], args[3])
+elif command == "four-days-two-overlap":
+    if argc != 4:
+        usage('four-days-two-overlap start end kw geo')
+
+    start = datetime.datetime.fromisoformat(args[0])
+    end = datetime.datetime.fromisoformat(args[1])
+    kw = args[2]
+    geo = args[3]
+
+    timeframes = []
+    while start < end:
+        n = start + datetime.timedelta(days=4)
+        timeframes.append((start, n))
+        start += datetime.timedelta(days=2)
+
+    queuemany(cur, timeframes, kw, geo)
+else:
+    print("unknownd command: {}".format(command), file=sys.stderr)
+    sys.exit(1)

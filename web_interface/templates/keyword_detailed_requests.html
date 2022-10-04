@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Requests using {{ k_pretty }}{% endblock %}
+{% block body %}
+  <table>
+    <thead><th>Request Id</th><th>Timeframe Id</th><th>Location</th><th>Time frame</th></thead>
+    {% for r_id, t_id, start, end, l_id, l_iso in timeframes %}
+      <tr><td><a href="{{ url_for('request_detailed', r_id=r_id) }}">{{ r_id }}</a></td>
+	<td><a href="{{ url_for('timeframe_detailed', t_id=t_id) }}">{{ t_id }}</a></td>
+	<td><a href="{{ url_for('location_detailed', l_id=l_id) }}">{{ l_iso }}</a></td>
+	<td>{{ start }} - {{ end }}</td>
+      </tr>
+    {% endfor %}
+  </table>
+{% endblock %}

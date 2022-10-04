@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Location {{ l_id }}{% endblock %}
+{% block body %}
+  <table>
+    <tr><td><b>Id</b></td><td>{{ l_id }}</td></tr>
+    <tr><td><b>Code</b></td><td>{{ l_iso }}</td></tr>
+    <tr><td><b>Name</b></td>
+      <td>{{ l_name }}</td></tr>
+    <tr><td><b>Requested</b></td>
+      <td><a href="{{ url_for('location_detailed_requests', l_id=l_id) }}">{{ reqs }} times</a></td></tr>
+    <tr><td><b>Referenced</b></td>
+      <td><a href="{{ url_for('location_detailed_referenced', l_id=l_id) }}">{{ refs }} times</a></td></tr>
+  </table>
+{% endblock %}

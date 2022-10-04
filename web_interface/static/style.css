@@ -1,0 +1,105 @@
+body {
+    font-family: sans-serif;
+}
+
+.navbar {
+    display: flex;
+    flex-wrap: wrap;
+}
+
+.navelement {
+    padding: 5px;
+}
+
+.tr-lightgray {
+    background-color: #f4f4f4;
+}
+
+.td-status-done {
+    background-color: lightgreen;
+}
+
+.ref-table {
+    width: 100%;
+}
+
+.ref-table td {
+    width: 33%;
+}
+
+dt {
+    font-weight: bold;
+}
+
+dd {
+    width: 800px;
+}
+
+#pikchrview .pikchr {
+    height: 800px;
+}
+
+p {
+    width: 800px;
+}
+/*
+.cdf .pikchr {
+    height: 300px;
+}
+.neo .pikchr {
+    height: 200px;
+}
+.label .pikchr {
+    height: 600px;
+}
+*/
+
+/* This is for cor.html */
+/* Use something like this to generate
+(dotimes (i 10)
+ (insert (format ".td-%d {\n    background-color: #%02xFF%02x;\n}\n\n" i (* (- 10 i) (/ 255 10)) (* (- 10 i) (/ 255 10)))
+ ))
+*/
+.td-0 {
+    background-color: #faFFfa;
+}
+
+.td-1 {
+    background-color: #e1FFe1;
+}
+
+.td-2 {
+    background-color: #c8FFc8;
+}
+
+.td-3 {
+    background-color: #afFFaf;
+}
+
+.td-4 {
+    background-color: #96FF96;
+}
+
+.td-5 {
+    background-color: #7dFF7d;
+}
+
+.td-6 {
+    background-color: #64FF64;
+}
+
+.td-7 {
+    background-color: #4bFF4b;
+}
+
+.td-8 {
+    background-color: #32FF32;
+}
+
+.td-9 {
+    background-color: #19FF19;
+}
+
+h4:target {
+    background-color: yellow;
+}

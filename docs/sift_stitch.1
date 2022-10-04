@@ -1,0 +1,27 @@
+.Dd June 22, 2022
+.Dt SIFT_STITCH 1
+.Os
+.Sh NAME
+.Nm sift_sitch
+.Nd stitch hourly time frames together
+.Sh SYNOPSIS
+.Nm sift_stich
+.Sh DESCRIPTION
+.Nm
+stiches hourly time frames into a long time series.
+In some cases it requires daily time frames as well to bridge gaps in
+the data.
+.Nm
+only considers requests tagged with either
+.Sq resolution:hourly
+or
+.Sq resolution:daily .
+These can be added using the
+.Cm add-resolution-tags
+command from
+.Xr sift_cli 1 .
+The stitched time series are then saved into a SQLite3 database called
+.Pa time_series.db
+in the current directory.
+.Sh SEE ALSO
+.Xr sift_cli 1

@@ -1,0 +1,533 @@
+#! /usr/bin/python3
+import argparse
+import datetime
+import json
+import logging
+import socket
+import subprocess
+import sys
+import time
+
+import psycopg2
+
+from sift import restore_timelabels, RestoreTimelabelsError
+
+con = psycopg2.connect('')
+log = logging.getLogger(__name__)
+log.setLevel('INFO')
+
+
+def init_logger():
+    hostname = socket.gethostname()
+    sh = logging.StreamHandler()
+    fh = logging.FileHandler('dispatcher-' + hostname + '.log')
+    f = logging.Formatter('%(asctime)s ' + hostname +
+                          ' %(module)s[%(process)d]: %(levelname)s: %(message)s')
+    sh.setFormatter(f)
+    fh.setFormatter(f)
+    log.addHandler(sh)
+    log.addHandler(fh)
+
+
+class Fetcher:
+    """
+        Base class for fetcher implementations
+    """
+    def __init__(self):
+        pass
+
+    def fetch(self, tf, kw, geo=None):
+        return self.do_fetch(tf, kw, geo)
+
+
+class PopenFetcherError(Exception):
+    def __init__(self, code, msg):
+        self.code = code
+        self.msg = msg
+
+
+class PopenFetcher(Fetcher):
+    """
+        Executes the fetcher directly using Popen
+    """
+    def __init__(self, script):
+        self.script = script
+        self.name = 'popen'
+
+    def do_fetch(self, tf, kw, geo=None):
+        args = [self.script, tf, kw]
+        if geo is not None:
+            args.append(geo)
+
+        return self.do_popen_fetch(args)
+
+    def do_popen_fetch(self, args, stdin=None):
+        stdin_file = None
+        if stdin is not None:
+            stdin_file = subprocess.PIPE
+
+        fetch = subprocess.Popen(args, stdin=stdin_file, stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE)
+
+        if stdin is not None:
+            fetch.stdin.write(stdin)
+            fetch.stdin.close()
+
+        rc = fetch.wait(timeout=60)
+
+        if rc != 0:
+            if rc == 5:
+                # This is the special return value from fetcher.py for response errors
+                error = json.loads(fetch.stdout.read())
+                assert 'error' in error
+                error = error['error']
+                assert 'code' in error and 'msg' in error
+
+                raise PopenFetcherError(error['code'], error['msg'])
+            else:
+                log.error("Fetcher exited with code %d", rc)
+                log.error("Output:")
+                log.error(fetch.stdout.read())
+                log.error("Error:")
+                log.error(fetch.stderr.read())
+                sys.exit(1)
+
+        return fetch.stdout.read()
+
+
+class SudoFetcher(PopenFetcher):
+    """
+        Executes the fetcher under another uid by using sudo(8).
+    """
+    def __init__(self, user, group, script):
+        self.user = user
+        self.group = group
+        self.script = script
+        self.name = 'sudo'
+
+    def do_fetch(self, tf, kw, geo=None):
+        args = ['sudo', '-u', self.user, '-g', self.group, '/bin/sh', self.script, 'fetch']
+        args.append(tf)
+        args.append(kw)
+
+        if geo is not None:
+            args.append(geo)
+
+        return self.do_popen_fetch(args)
+
+
+class SshFetcher(PopenFetcher):
+    """
+        Executes the fetcher on another host using ssh(1)
+    """
+    def __init__(self, user, host):
+        self.user = user
+        self.host = host
+        self.name = 'ssh'
+
+    def __str__(self):
+        return 'ssh://{}@{}'.format(self.user, self.host)
+
+    def do_fetch(self, tf, kw, geo=None):
+        args = ['ssh', '-T', '{}@{}'.format(self.user, self.host)]
+        stdin = tf.encode() + b'\n' + kw.encode() + b'\n'
+        if geo is not None:
+            stdin += geo.encode()
+        stdin += b'\n'
+
+        return self.do_popen_fetch(args, stdin=stdin)
+
+
+def load_fetchers(source):
+    """
+        Reads all fetchers from source and returns a list of all
+        active fetchers.
+    """
+    with open(source, "r") as f:
+        d = json.loads(f.read())
+    fetchers = []
+    for f in d:
+        if 'active' in f and not f['active']:
+            continue
+        if f['type'] == 'popen':
+            fetchers.append(PopenFetcher(f['script']))
+        elif f['type'] == 'sudo':
+            fetchers.append(SudoFetcher(f['user'], f['group'], f['script']))
+        elif f['type'] == 'ssh':
+            fetchers.append(SshFetcher(f['user'], f['host']))
+
+    return fetchers
+
+
+def wait(last_wait, wait_time):
+    """
+        Waits wait_time seconds since the function returned the last
+        time. last_wait should be None on the first call and the
+        return value of wait on subsequent calls.  Returns immediately
+        after the first call.
+    """
+    if last_wait is None:
+        return time.clock_gettime(time.CLOCK_MONOTONIC)
+
+    wait_end = last_wait + wait_time
+    now = time.clock_gettime(time.CLOCK_MONOTONIC)
+    while now < wait_end:
+        rem = wait_end-now
+        print('Waiting before next query ({:.2f} seconds remaining)'.format(rem),
+              end='')
+        time.sleep(0.1)
+        print('\r', end='')
+        now = time.clock_gettime(time.CLOCK_MONOTONIC)
+
+    return time.clock_gettime(time.CLOCK_MONOTONIC)
+
+
+def check_can_restore_timelabels(start, end, tf, orig):
+    """ Returns True if the labels of tf can be restored, False otherwise """
+
+    assert len(tf) == len(orig)
+
+    tl = list(map(str, restore_timelabels(start, end, tf)))
+
+    if len(tl) != len(orig):
+        return False
+
+    for a, b in zip(tl, orig):
+        if a != b:
+            print(a, b)
+            return False
+
+    return True
+
+
+def format_timeframe_hours(start, end):
+    """
+        Appropriately formats the start and end time so they can be
+        used as fetcher arguments
+    """
+
+    if end - start > datetime.timedelta(days=7):
+        return "{} {}".format(start.strftime('%Y-%m-%d'),
+                              end.strftime('%Y-%m-%d'))
+
+    return "{} {}".format(start.strftime('%Y-%m-%dT%H'),
+                          end.strftime('%Y-%m-%dT%H'))
+
+
+def get_or_insert_topic(cur, t):
+    """
+        Returns the id of topic t in the database.  If t does not yet
+        exist, it is inserted
+    """
+    cur.execute('SELECT kt_id FROM keyword_topics WHERE kt_name = %s', (t,))
+    res = cur.fetchone()
+
+    if res is not None:
+        return res[0]
+
+    cur.execute('INSERT INTO keyword_topics (kt_name) VALUES (%s) RETURNING kt_id', (t,))
+    return cur.fetchone()[0]
+
+
+def get_or_insert_keyword(cur, q, title, topic):
+    """
+        Returns the id of the keyword with query/topic string q.  If the keyword does not exit
+        it is inserted in the database, along with the topic, if appropriate.
+    """
+    cur.execute('SELECT k_id FROM keywords WHERE k_q = %s', (q,))
+    res = cur.fetchone()
+
+    if res is not None:
+        return res[0]
+
+    if topic is not None:
+        kt_id = get_or_insert_topic(cur, topic)
+    else:
+        kt_id = None
+
+    cur.execute('''INSERT INTO keywords (k_q, k_title, kt_id, k_added)
+                   VALUES (%s, %s, %s, 'now') RETURNING k_id''', (q, title, kt_id))
+
+    return cur.fetchone()[0]
+
+
+def insert_or_ignore_fetcher(cur, name, hostname):
+    """
+        Returns the id of a fetcher with name name and hostname
+        hostname in the database.  If it does not exist, it is
+        created.
+    """
+    cur.execute('''SELECT f_id
+                     FROM fetchers
+                     JOIN request_api USING (ra_id)
+                    WHERE f_name = %s AND f_host = %s
+                      AND ra_name = 'pytrends' ''', (name, hostname,))
+
+    res = cur.fetchone()
+
+    if res is not None:
+        return res[0]
+
+    cur.execute('''INSERT INTO fetchers (f_name, f_host, ra_id)
+                   VALUES (%s, %s, (SELECT ra_id FROM request_api WHERE ra_name = 'pytrends'))
+                   RETURNING f_id''', (name, hostname,))
+
+    return cur.fetchone()[0]
+
+
+def insert_data_into_database(r_id, k_id, f_id, d, ts='now'):
+    """
+        Inserts the data d returned from a fetcher into the database
+        using r_id, k_id and f_id.  ts specifies when the data was
+        fetched and defaults to the current time.
+    """
+    cur = con.cursor()
+    # Time
+    t = d['time']
+    k, v = [], []
+
+    for key in sorted(t.keys()):
+        k.append(key)
+        v.append(t[key])
+
+    cur.execute('''SELECT r_tf_start, r_tf_end FROM requests WHERE r_id = %s''', (r_id,))
+    r_tf_start, r_tf_end = cur.fetchone()
+
+    assert check_can_restore_timelabels(r_tf_start, r_tf_end, v, k)
+
+    vals = '{' + ','.join(map(str, v)) + '}'
+
+    cur.execute('INSERT INTO trends_time (r_id, k_id, t_v) VALUES (%s, %s, %s)', (r_id, k_id, vals))
+
+    # Geo
+    g = d['geo']
+
+    # On country level (at least), STATES and REGION are the same for US
+    # to prevent uniqueness violations, skip REGION if r_geo == US
+    cur.execute('''SELECT 1
+                     FROM requests
+                     JOIN locations ON r_geo = l_id
+                    WHERE r_id = %s AND l_iso = 'US' ''', [r_id])
+    res = cur.fetchone()
+    is_us = res is not None
+
+    for k in g.keys():
+        # See above
+        if is_us and k == 'REGION':
+            continue
+
+        kl = k.lower()
+        for name in g[k].keys():
+            code, value = g[k][name]
+            cur.execute('SELECT l_id FROM locations WHERE l_iso = %s AND l_name = %s',
+                        (code, name))
+
+            res = cur.fetchone()
+            if res is not None:
+                l_id = res[0]
+            else:
+                cur.execute('''INSERT INTO locations (l_iso, l_name) VALUES (%s, %s)
+                               RETURNING l_id''',
+                            (code, name))
+                l_id = cur.fetchone()[0]
+
+            cur.execute('SELECT gs_id FROM trends_geo_scopes WHERE gs_name = %s', (kl,))
+            gs_id = cur.fetchone()[0]
+
+            cur.execute('''INSERT INTO trends_geo (r_id, l_id, k_id, gs_id, g_v)
+                           VALUES(%s, %s, %s, %s, %s)''', (r_id, l_id, k_id, gs_id, value))
+
+    # Related
+    r = d['related']
+
+    rq = r['query']
+    rt = r['topic']
+
+    for c in ('top', 'rising'):
+        if c in rq:
+            for q, v in rq[c]:
+                kr_kw = get_or_insert_keyword(cur, q, None, None)
+
+                cur.execute('''INSERT INTO keywords_related (kr_istop, r_id, k_id, kr_kw, kr_v)
+                               VALUES (%s, %s, %s, %s, %s)''', (c == 'top', r_id, k_id, kr_kw, v))
+        if c in rt:
+            for mid, title, topic, v in rt[c]:
+                kr_kw = get_or_insert_keyword(cur, mid, title, topic)
+
+                cur.execute('''INSERT INTO keywords_related (kr_istop, r_id, k_id, kr_kw, kr_v)
+                               VALUES (%s, %s, %s, %s, %s)''', (c == 'top', r_id, k_id, kr_kw, v))
+
+    cur.execute('''UPDATE requests
+                   SET
+                       r_status = (SELECT rs_id FROM request_status WHERE rs_name = 'done'),
+                       r_ts = %s,
+                       r_fetcher = %s
+                   WHERE r_id = %s
+                     AND r_status = (SELECT rs_id FROM request_status WHERE rs_name = 'running')''',
+                (ts, f_id, r_id))
+    assert cur.rowcount == 1
+    assert cur.statusmessage == 'UPDATE 1'
+
+
+# To prevent data loss, all returned content from the fetcher is
+# stored in this table.  After it is inserted successfully, it is
+# removed.
+cur = con.cursor()
+cur.execute('SELECT COUNT(*) FROM raw_fetcher_output')
+res = cur.fetchone()[0]
+
+if res > 0:
+    a = input("Unprocessed results detect, process now? ")
+    if a in ('y', 'yes'):
+        cur.execute('SELECT rfo_id, f_id, r_id, k_id, rfo_data, rfo_ts FROM raw_fetcher_output')
+        for rfo_id, f_id, r_id, k_id, rfo_data, rfo_ts in cur.fetchall():
+            with con:
+                insert_data_into_database(r_id, k_id, f_id, json.loads(rfo_data), ts=rfo_ts)
+                cur.execute('DELETE FROM raw_fetcher_output WHERE rfo_id = %s', [rfo_id])
+
+cur.close()
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--exit', action='store_true')
+parser.add_argument('--local', action='store_true')
+arguments = parser.parse_args()
+
+if arguments.local:
+    fetchers = [PopenFetcher('sift_fetcher')]
+else:
+    fetchers = load_fetchers("fetchers.json")
+
+if len(fetchers) == 0:
+    print("No fetchers found")
+    sys.exit(1)
+
+cur = con.cursor()
+for fetcher in fetchers:
+    if fetcher.name == 'ssh':
+        f_id = insert_or_ignore_fetcher(cur, 'ssh_pytrends_{}'.format(fetcher.host), fetcher.host)
+    elif fetcher.name == 'popen':
+        f_id = insert_or_ignore_fetcher(cur, 'popen_pytrends', socket.gethostname())
+    elif fetcher.name == 'sudo':
+        f_id = insert_or_ignore_fetcher(cur, 'sudo_pytrends', socket.gethostname())
+    else:
+        raise NotImplementedError
+    fetcher.f_id = f_id
+cur.close()
+
+last_wait = 0
+wait_time = 60 / len(fetchers) + 1
+
+next_fetcher = 0
+n500 = 0
+
+init_logger()
+log.info("Dispatcher started")
+
+while True:
+    cur = con.cursor()
+    last_wait = wait(last_wait, wait_time)
+    cur.execute('''SELECT r_id, k_id, k_q, r_tf_start, r_tf_end, l_iso, r_note
+                     FROM requests
+                     JOIN keywords_in_request USING (r_id)
+                     JOIN keywords USING (k_id)
+                     JOIN request_api ON r_use = ra_id
+                     JOIN request_status ON r_status = rs_id
+                LEFT JOIN locations ON r_geo = l_id
+                    WHERE r_notbefore < 'now'
+                      AND r_notafter > 'now'
+                      AND rs_name = 'open'
+                      AND r_tf_end < 'now' ::timestamp - interval '10 minutes'
+                      AND ra_name = 'pytrends'
+                      AND r_id NOT IN (SELECT r_id FROM raw_fetcher_output)
+                 ORDER BY r_prio DESC, r_notafter ASC
+                    LIMIT 1''')
+
+    res = cur.fetchone()
+    if res is None:
+        if arguments.exit:
+            log.info('Nothing to do, exiting')
+            sys.exit(0)
+
+        cur.execute("SELECT 'now' :: timestamp")
+        print("Nothing to do {}".format(cur.fetchone()[0]))
+        time.sleep(1)
+        # This is needed so that 'now' gets updated
+        con.rollback()
+        # We have already waited, no need to wait again
+        last_wait = None
+        continue
+
+    r_id, k_id, kw, r_tf_start, r_tf_end, r_geo, r_note = res
+    cur.execute('''UPDATE requests
+                      SET r_status = (SELECT rs_id FROM request_status WHERE rs_name = 'running')
+                    WHERE r_status = (SELECT rs_id FROM request_status WHERE rs_name = 'open')
+                      AND r_id = %s
+                RETURNING r_id''', (r_id,))
+    if cur.fetchone() is None:
+        print('continue')
+        continue
+
+    assert cur.rowcount == 1
+    assert cur.statusmessage == 'UPDATE 1'
+
+    con.commit()
+
+    tf = format_timeframe_hours(r_tf_start, r_tf_end)
+
+    if fetchers[next_fetcher].name == 'ssh':
+        log.info("Using fetcher %s@%s for request %s ['%s' '%s' '%s' '%s' '%s']",
+                 fetchers[next_fetcher].name, fetchers[next_fetcher].host, r_id, kw,
+                 r_tf_start, r_tf_end, r_geo, r_note)
+    else:
+        log.info("Using fetcher %s for request %s", fetchers[next_fetcher].name, r_id)
+
+    f_id = fetchers[next_fetcher].f_id
+    try:
+        raw_output = fetchers[next_fetcher].fetch(tf, kw, r_geo)
+    except PopenFetcherError as e:
+        cur.execute('''UPDATE requests
+                      SET r_status = (SELECT rs_id FROM request_status WHERE rs_name = 'open')
+                    WHERE r_status = (SELECT rs_id FROM request_status WHERE rs_name = 'running')
+                      AND r_id = %s
+                RETURNING r_id''', (r_id,))
+        assert cur.fetchone() is not None
+        con.commit()
+
+        if e.code == 500:
+            print("Got an 500 error")
+            n500 += 1
+            print("Got {} 500 errors so far".format(n500))
+            continue
+
+        raise
+    except:
+        # This except is intentionally bare in order to always unlock the request
+        cur.execute('''UPDATE requests
+                          SET r_status = (SELECT rs_id FROM request_status WHERE rs_name = 'open')
+                        WHERE r_status = (SELECT rs_id FROM request_status WHERE rs_name = 'running')
+                          AND r_id = %s
+                    RETURNING r_id''', (r_id,))
+        assert cur.fetchone() is not None
+        con.commit()
+
+        print('error code 2', file=sys.stderr)
+        raise
+
+    next_fetcher = (next_fetcher + 1) % len(fetchers)
+
+    cur.execute('''INSERT INTO raw_fetcher_output (rfo_data, f_id, r_id, k_id, rfo_ts)
+                   VALUES (%s, %s, %s, %s, 'now')
+                   RETURNING rfo_id''',
+                (raw_output.decode('utf-8'), f_id, r_id, k_id))
+    con.commit()
+
+    rfo_id = cur.fetchone()[0]
+
+    d = json.loads(raw_output)
+
+    with con:
+        try:
+            insert_data_into_database(r_id, k_id, f_id, d)
+            cur.execute('DELETE FROM raw_fetcher_output WHERE rfo_id = %s', (rfo_id,))
+        except RestoreTimelabelsError:
+            log.warning('Could not restore timelabels for request %d', r_id)

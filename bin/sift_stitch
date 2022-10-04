@@ -1,0 +1,188 @@
+#! /usr/bin/python3
+
+import sqlite3
+import sys
+
+import psycopg2
+
+from sift import restore_timelabels, stitch_timeframes, rescale_hourly_to_daily
+
+
+def filter_and_average_timeframes(tfs):
+    timeframes = {}
+
+    for r_id, start, end, v in tfs:
+        if len(v) == 0:
+            continue
+
+        tl = restore_timelabels(start, end, v)
+
+        key = (start, end)
+
+        if key not in timeframes:
+            timeframes[key] = []
+
+        timeframes[key].append((tl, r_id, start, end, v))
+
+    keys = list(timeframes)
+
+    t = []
+    for k in keys:
+        values = []
+        vl = -1
+
+        for tl, r_id, start, end, v in timeframes[k]:
+            values.append(v)
+
+            # Assert same number of values on all time frames
+            if vl == -1:
+                vl = len(v)
+            else:
+                assert vl == len(v)
+
+        res = []
+        for vals in zip(*values):
+            res.append(sum(vals)/len(vals))
+
+        assert len(res) == vl
+
+        t.append((tl, r_id, start, end, res))
+
+    return t
+
+
+# Copied stitch_timeframes in vis.py
+def get_averaged_timeframes(cur, k_id, geo, resolution):
+    q = cur.mogrify('''SELECT r_id, r_tf_start, r_tf_end, t_v
+                         FROM requests
+                         JOIN trends_time USING (r_id)
+                         JOIN request_tags USING (r_id)
+                         JOIN rtags USING (rtag_id)
+                        WHERE k_id = %s
+                          AND rtag_name = 'resolution:' || %s
+                          AND r_status = (SELECT rs_id FROM request_status WHERE rs_name = 'done')''',
+                    (k_id, resolution))
+    if geo is None:
+        q += cur.mogrify('AND r_geo IS NULL ')
+    else:
+        q += cur.mogrify('AND r_geo = (SELECT l_id FROM locations WHERE l_iso = %s) ', (geo,))
+
+    q += cur.mogrify('''
+                     ORDER BY r_tf_start;''')
+
+    cur.execute(q)
+
+    return filter_and_average_timeframes(cur)
+
+
+def stitch_averaged_timeframes(tfs, ignoreNoOverlap=False):
+    assert len(tfs) != 0
+
+    timeframes = []
+    layers = []
+
+    for tl, r_id, start, end, v in tfs:
+        do_split = False
+        if len(tl) == 0:
+            do_split = True
+        elif len(timeframes) > 0:
+            prev = dict(zip(timeframes[-1][0], timeframes[-1][1]))
+            ts = dict(zip(tl, v))
+            overlap = set(prev.keys()) & set(ts.keys())
+            if len(overlap) > 0:
+                values_left = [prev[k] for k in overlap]
+                values_right = [ts[k] for k in overlap]
+                max_left = max(values_left)
+                max_right = max(values_right)
+
+                if max_left == 0 or max_right == 0:
+                    do_split = True
+            else:
+                do_split = True
+
+        if do_split and not ignoreNoOverlap and len(timeframes) > 0:
+            layers.append(stitch_timeframes(timeframes))
+            timeframes = []
+
+        if len(tl) > 0:
+            timeframes.append((tl, v))
+
+    if len(timeframes) > 0:
+        layers.append(stitch_timeframes(timeframes, ignoreNoOverlap))
+
+    return layers
+
+
+def do_stitch_and_maybe_rescale(c, cur, k_id, geo):
+    hourly_tfs = get_averaged_timeframes(cur, k_id, geo, 'hourly')
+
+    if len(hourly_tfs) == 0:
+        print('No hourly timeframes for {} {}'.format(k_id, geo))
+        return
+
+    layers = stitch_averaged_timeframes(hourly_tfs)
+
+    did_rescale = False
+
+    if len(layers) > 1:
+        did_rescale = True
+        daily_tfs = get_averaged_timeframes(cur, k_id, geo, 'daily')
+        if len(daily_tfs) == 0:
+            print('No daily timeframes for {} {}'.format(k_id, geo))
+            print('Falling back to stitching hourly')
+            layers = stitch_averaged_timeframes(hourly_tfs, True)
+            stitched_ts = layers[0]
+        else:
+            daily_layer = stitch_averaged_timeframes(daily_tfs, True)
+            if len(daily_layer) > 1:
+                print('Cannot stitch and cannot rescale {}'.format(geo))
+                return
+            daily_layer = daily_layer[0]
+
+            stitched_ts = rescale_hourly_to_daily(daily_layer, layers)
+
+            if stitched_ts is None:
+                print('Cannot rescale {}'.format(geo))
+                return
+    else:
+        stitched_ts = layers[0]
+
+    save_ts(c, k_id, geo, dict(zip(stitched_ts[0], stitched_ts[1])), did_rescale)
+
+
+def save_ts(c, k_id, geo, stitched_ts, did_rescale):
+    for t, v in stitched_ts.items():
+        c.execute('''INSERT INTO ts VALUES(?, 1*strftime('%s', ?), ?, ?)''',
+                  (k_id, str(t), geo, v))
+
+
+if len(sys.argv) > 2:
+    print('usage: {} [k_id]'.format(sys.argv[0]), file=sys.stderr)
+    sys.exit(1)
+
+c = sqlite3.connect('time_series.db')
+
+c.execute('DROP TABLE IF EXISTS ts;')
+c.execute('''
+CREATE TABLE ts (
+        k_id INTEGER NOT NULL,
+        time INTEGER NOT NULL,
+        state TEXT NOT NULL,
+        value REAL NOT NULL,
+        UNIQUE(k_id, time, state)
+);''')
+
+con = psycopg2.connect('')
+con.set_session(readonly=True, autocommit=True)
+
+k_id = 1
+if len(sys.argv) == 2:
+    k_id = int(sys.argv[1])
+
+cur = con.cursor()
+cur.execute('''SELECT l_iso FROM locations WHERE l_iso LIKE 'US%' ''')
+for l_iso, in cur.fetchall():
+    print('stitching k_id', k_id, 'for', l_iso)
+    do_stitch_and_maybe_rescale(c, cur, k_id, l_iso)
+
+c.commit()

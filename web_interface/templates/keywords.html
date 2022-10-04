@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Keywords{% endblock %}
+{% block body %}
+  <table>
+    <tr><th>Id<th>Keywords<th>Topic
+    {% for k in keywords %}
+    <tr><td><a href="{{ url_for('keyword_detailed', k_id=k[0]) }}">{{ k[0] }}</a>
+      <td>{{ k[1] }}
+      <td>{% if k[2] %}{{ k[2] }}{% endif %}
+      <td>{{ k[3] }} {{ k[4] }} {{ k[5] }}
+    {% endfor %}
+  </table>
+{% endblock %}

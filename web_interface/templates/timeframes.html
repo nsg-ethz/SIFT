@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Timeframes{% endblock %}
+{% block body %}
+<table>
+  <tr><th>Id<th>Request<th>For<th>Start<th>End<th>Fetched at</tr>
+  {% for tf in timeframes %}
+  <tr><td><a href="{{ url_for ('timeframe_detailed', t_id=tf[0]) }}">{{ tf[0] }}</a>
+    <td><a href="{{ url_for('request_detailed', r_id=tf[5]) }}">{{ tf[5] }}</a>
+    <td>{{ tf[1] }}<td>{{ tf[2] }}<td>{{ tf[3] }}<td>{{ tf[4] }}</tr>
+  {% endfor %}
+</table>
+{% endblock %}

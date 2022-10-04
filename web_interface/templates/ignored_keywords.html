@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Ignored Keywords{% endblock %}
+{% block body %}
+  <h3>Keywords ignore during labeling</h3>
+  <table>
+  {% for k_id, k_pretty in ignored %}
+  <tr><td><a href="{{ url_for('keyword_detailed', k_id=k_id) }}">{{ k_id }}</a>
+    <td>{{ k_pretty }}
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}

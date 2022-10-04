@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Tags{% endblock %}
+{% block body %}
+<table>
+  <tr><th>Id<th>Name<th>Number of keywords
+  {% for tg in tags %}
+    <tr><td><a href="{{ url_for ('tag_detailed', tg_id=tg[0]) }}">{{ tg[0] }}</a>
+      <td>{{ tg[1] }}
+      <td>{{ tg[2] }}</tr>
+  {% endfor %}
+</table>
+{% endblock %}

@@ -1,0 +1,6 @@
+include docs/*
+include scripts/*
+include sql/*
+include test/*
+include web_interface/*
+include fetchers.json.example

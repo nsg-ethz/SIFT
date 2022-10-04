@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Keyword differences{% endblock %}
+{% block body %}
+  <a href="{{ url_for('keyword_diff') }}">New diff</a>
+  <table>
+    <tr><td><b>Request A:</b></td><td><a href="{{ url_for('request_detailed', r_id=a_id) }}">{{ a_id }}</a></td></tr>
+    <tr><td><b>Request B:</b></td><td><a href="{{ url_for('request_detailed', r_id=b_id) }}">{{ b_id }}</a></td></tr>
+    <tr><td><b>Keyword:</b></td>
+      <td>
+	{% if a.k_id == b.k_id %}
+	  <a href="{{ url_for('keyword_detailed', k_id=a.k_id) }}">{{ a.k_pretty }}</a>
+	{% else %}
+	  <span style="color: red">
+	    <a href="{{ url_for('keyword_detailed', k_id=a.k_id) }}">{{ a.k_pretty }}</a>
+	  </span>
+	  &rarr;
+	  <span style="color: green">
+	    <a href="{{ url_for('keyword_detailed', k_id=b.k_id) }}">{{ b.k_pretty }}</a>
+	  </span>
+	{% endif %}
+      </td>
+    <tr><td><b>Geography:</b></td>
+      <td>
+	{% if a.geo == b.geo %}
+	  {{ a.geo|default('world', True) }}
+	{% else %}
+	  <span style="color: red">{{ a.geo|default('world', True) }}</span>
+	  &rarr;
+	  <span style="color: green">{{ b.geo|default('world', True) }}</span>
+	{% endif %}
+      </td>
+    <tr><td><b>Time:</b></td>
+      <td>
+	{% if a.time == b.time %}
+	  {{ a.time }}
+	{% else %}
+	  <span style="color: red">{{ a.time }}</span>
+	  &rarr;
+	  <span style="color: green">{{ b.time }}</span>
+	{% endif %}
+      </td>
+  </table><br>
+  <table>
+  {% for k_id, k_pretty, in_a, in_b, c_a, c_b in kws %}
+      <tr
+	{% if in_a and not in_b %}
+	  style="background-color: rgb(255, 163, 163)"
+	{% elif not in_a and in_b %}
+	  style="background-color: lightgreen"
+	{% endif %}
+	>
+	<td><a href="{{ url_for('keyword_detailed', k_id=k_id) }}">{{ k_id }}</a>
+	<td>{{ k_pretty }}
+	<td>
+	  {% if c_a and c_b and c_a != c_b %}
+	    <span style="color: red">{{ c_a }}</span>
+	    &rarr;
+	    <span style="color: green">{{ c_b }}</span>
+	  {% else %}
+	    {% if c_a %}
+	      {{ c_a }}
+	    {% else %}
+	      {{ c_b }}
+	    {% endif %}
+	  {% endif %}
+    {% endfor %}
+  </table>
+{% endblock %}

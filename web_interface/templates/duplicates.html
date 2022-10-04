@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Duplicates{% endblock %}
+{% block body %}
+  {% if res %}
+    <div class="navbar">
+      {% for _, _, iso, _, _, _ in res %}
+        {% if loop.changed(iso) %}
+          <div class="navelement"><a href="#{{ iso }}">{{ iso }}</a></div>
+        {% endif %}
+      {% endfor %}
+    </div>
+    {% for start, end, iso, k_id, k_pretty, r_ids in res %}
+      {% if loop.changed(iso) %}
+        <h3 id="{{ iso }}">{{ iso }}</h3>
+      {% endif %}
+      <h4>{{ start }} - {{ end }}: {{ k_pretty }} for {{ iso }}</h4>
+      <a href="{{ url_for('duplicate_compare', start=start, end=end, k_id=k_id, iso=iso) }}">Compare</a>
+      <ul>
+      {% for r_id in r_ids | sort %}
+        <li><a href="{{ url_for('request_detailed', r_id=r_id) }}">{{ r_id }}</a>
+      {% endfor %}
+      </ul>
+    {% endfor %}
+  {% else %}
+    No duplicate time frames.
+  {% endif %}
+{% endblock %}

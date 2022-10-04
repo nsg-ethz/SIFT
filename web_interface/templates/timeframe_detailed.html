@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Timeframe {{ t_id }}{% endblock %}
+{% block body %}
+  <table>
+    <tr><td><b>Id</b></td><td>{{ t_id }}</td></tr>
+    <tr><td><b>Keyword</b></td>
+      <td><a href="{{ url_for('keyword_detailed', k_id=tf[2]) }}">{{ tf[1] }}</td></tr>
+    <tr><td><b>Request</b></td>
+      <td><a href="{{ url_for('request_detailed', r_id=tf[0]) }}">{{ tf[0] }}</td></tr>
+    <tr><td><b>Start</b></td><td>{{ tf[4] }}</td></tr>
+    <tr><td><b>End</b></td><td>{{ tf[5] }}</td></tr>
+    <tr><td><b>Region</b></td><td>
+    {% if tf[6] %}
+      {{ tf[7] }} ({{ tf[6] }})
+    {% else %}
+      World
+    {% endif %}
+    </td></tr>
+  </table>
+  {% if plt %}
+    {{ plt | safe }}
+  {% else %}
+    No data
+  {% endif %}
+{% endblock %}

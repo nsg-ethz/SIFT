@@ -1,0 +1,5 @@
+[
+    {"type": "popen", "script": "sift_fetcher", "active": false},
+    {"type": "sudo", "user": "fetcher", "group": "fetcher", "script": "/home/fetcher/sift_fetcher.sh"},
+    {"type": "ssh", "user": "fetcher", "host": "fetchhost"}
+]

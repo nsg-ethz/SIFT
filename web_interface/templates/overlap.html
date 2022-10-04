@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Overlap{% endblock %}
+{% block body %}
+  <i>Note: At the moment only weekly timeframes are considered</i>
+  <div class="navbar">
+    {% for k_id, k_pretty in kws %}
+      <div class="navelement">
+	{% if kw == k_id %}
+	  <b>{{ k_pretty }}</b>
+	{% else %}
+	  <a href="{{ url_for('overlap', time=time, geo=geo, kw=k_id) }}">{{ k_pretty }}</a>
+	{% endif %}
+      </div>
+    {% endfor %}
+  </div>
+  <div class="navbar">
+    {% for g in geos | sort %}
+      <div class="navelement">
+	{% if geo == g[0] %}
+	  <b>{{ geo }}</b>
+	{% else %}
+	  <a href="{{ url_for('overlap', time=time, geo=g, kw=kw) }}">{{ g[0] }}</a>
+	{% endif %}
+      </div>
+    {% endfor %}
+  </div>
+  <h3>{{ kw_pretty }} for {{ loc }}</h3>
+  <a href="{{ url_for('overlap', time=time - week, geo=geo, kw=kw) }}">Previous week</a>
+  <a href="{{ url_for('overlap', time=time + week, geo=geo, kw=kw) }}">Next week</a>
+  <h4>Timeframes around {{ time }}</h4>
+  <form>
+    <input type="hidden" name="time" value="{{ time }}">
+    <input type="hidden" name="kw" value="{{ kw }}">
+    {% if geo %}
+      <input type="hidden" name="geo" value="{{ geo }}">
+    {% endif %}
+    {% for r in res %}
+      <input type="radio" name="r_A" value="{{ r[3] }}" {% if loop.index0 == i %}checked{% endif %}>
+      <input type="radio" name="r_B" value="{{ r[3] }}" {% if loop.index0 == j %}checked{% endif %}>
+      <a href="{{ url_for('request_detailed', r_id=r[3]) }}">{{ r[3] }}</a>: {{ r[0] }} - {{ r[1] }}
+      <br>
+    {% endfor %}
+    <input type="submit" value="Overlap">
+  </form>
+  <h4>Overview</h4>
+  <b>Note:</b> red lines indicate the selected timeframes<br>
+  {{ overview | safe }}<br>
+  {{ overview2 | safe }}<br>
+  {% if not plots or plots | length == 0 %}
+    Not enough timeframes
+  {% endif %}
+  {% if plots | length >= 1 %}
+    <h4>Raw timeframes</h4>
+    {{ plots[0] | safe }}
+  {% endif %}
+  {% if plots | length == 3 %}
+    <h4>Stitch of the two timeframes</h4>
+    {{ plots[1] | safe }}
+    <h4>Zoom on overlap</h4>
+    {{ plots[2] | safe }}
+  {% else %}
+    <br>
+    Not enough data to stitch.
+  {% endif %}
+{% endblock %}

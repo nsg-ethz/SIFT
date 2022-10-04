@@ -1,0 +1,87 @@
+.Dd June 9, 2022
+.Dt SIFT_QUEUE 1
+.Os
+.Sh NAME
+.Nm sift_queue
+.Nd queue requests to Google Trends
+.Sh SYNOPSIS
+.Nm sift_queue
+.Op Fl -comment Ar comment
+.Op Fl -dry-run
+.Op Fl -duplicates
+.Op Fl -tag Ar name
+.Cm command
+.Op Ar arguments
+.Sh DESCRIPTION
+.Nm
+is used to queue requests to Google Trends.
+This queue is read by
+.Xr sift_dispatcher 1
+which then executes the requests.
+.Pp
+.Ar kw
+is either a query string or a topic identifier.
+If
+.Ar kw
+starts with a colon, the part after it is interpreted as a keyword id.
+Multiple keywords can be specified using keyword tags, in that case
+.Ar kw
+starts with a percent character followed by the keyword tag.
+.Pp
+The
+.Ar location
+argument is either an ISO code (as used by Trends so this includes DMA
+codes) or the special string
+.Sq world
+for no geograhpic restriction.
+If
+.Ar location
+starts with a slash the part after it is used as a SQL LIKE pattern to
+match the ISO code.
+.Pp
+The following options exist:
+.Bl -tag -width Ds
+.It Fl -comment Ar comment
+Sets the comment field r_note of the newly queued request(s).
+.It Fl -dry-run
+Don't queue anything, just display what would happen.
+.It Fl -duplicates
+Indicates that this request duplicates a request already in the
+database.
+If this option is given, the r_note field must be set using the
+.Fl -comment
+option.
+It is an error to specify this option when the request is not a
+duplicate.
+.It Fl -tag Ar name
+Mark the newly queued request(s) with the request tag
+.Ar name .
+If the tag doesn't exist, it is created.
+.El
+.Pp
+The following commands exists:
+.Bl -tag -width Ds
+.It Cm one Ar start Ar end Ar kw Ar geo
+Fetches a single time frame.
+.It Cm from-day Ar start Ar kw Ar geo
+Queues consecutive four hour time frames starting at
+.Ar start .
+.It Cm fetch-week Ar week Ar kw Ar geo
+Queues a request for an entire weeks starting at
+.Ar week
+.It Cm overlap-week-fetch Ar start Ar overlap Ar kw Ar geo Op Ar end
+Queues weekly time frames starting at
+.Ar start .
+Each time frame will overlap the previous one by
+.Ar overlap
+days.
+.It Cm four-days-two-overlap Ar start Ar end Ar kw Ar geo
+Queues requests for four day timeframes with two days overlap.
+.El
+.Sh EXIT STATUS
+.Ex -std
+.Sh AUTHORS
+.Nm
+was written by
+.An Martin Vahlensieck Aq Mt martinva@student.ethz.ch
+during his master thesis.

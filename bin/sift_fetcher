@@ -1,0 +1,141 @@
+#! /usr/bin/python3
+import json
+import logging
+import socket
+import sys
+
+from pytrends.request import TrendReq
+from pytrends.exceptions import ResponseError
+
+log = logging.getLogger(__name__)
+log.setLevel('INFO')
+
+
+def init_logger():
+    hostname = socket.gethostname()
+    fh = logging.FileHandler('fetcher-' + hostname + '.log')
+    f = logging.Formatter('%(asctime)s ' + hostname +
+                          ' %(module)s[%(process)d]: %(levelname)s: %(message)s')
+    fh.setFormatter(f)
+    log.addHandler(fh)
+
+
+def save_timeseries(kw, pytrends):
+    """
+       Returns the time series as a dictionary with the time points
+       being the keys.
+    """
+    d = {}
+    r = pytrends.interest_over_time()
+
+    if len(r) != 0:
+        for t, v in zip(map(str, r.index), r[kw]):
+            d[t] = v
+    return d
+
+
+def save_geo(kw, geo, pytrends):
+    """
+        Returns a dictionary with geographic information.
+    """
+    d = {}
+    if geo is None:
+        r = pytrends.interest_by_region(inc_geo_code=True)
+        d2 = {}
+        for a, b, c in r.itertuples(True):
+            d2[a] = (b, c)
+        d['COUNTRY'] = d2
+    elif geo == 'US':
+        for i in ('COUNTRY', 'REGION', 'DMA'):
+            if i == 'COUNTRY':
+                scope = 'STATES'
+            else:
+                scope = i
+            d[scope] = {}
+            r = pytrends.interest_by_region(resolution=i, inc_geo_code=True)
+            for a, b, c in r.itertuples(True):
+                d[scope][a] = (b, c)
+    else:
+        # DMA seems to be the same as COUNTRY outside US
+        d2 = {}
+        r = pytrends.interest_by_region(resolution='COUNTRY', inc_geo_code=True)
+        for a, b, c in r.itertuples(True):
+            d2[a] = (b, c)
+        d['STATES'] = d2
+
+    return d
+
+
+def save_related(kw, pytrends):
+    """
+        Returns a dictionary with the related queries and topics.
+    """
+    d = {'query': {}, 'topic': {}}
+    for c in ('top', 'rising'):
+        rq = pytrends.related_queries()[kw][c]
+        rt = pytrends.related_topics()[kw][c]
+
+        if rq is not None:
+            d['query'][c] = []
+            for q, v in rq.itertuples(False):
+                d['query'][c].append((q, v))
+
+        if rt is not None:
+            d['topic'][c] = []
+            for row in rt.itertuples(False):
+                if c == 'top':
+                    v, fv, _, li, q, title, t_type = row
+                else:
+                    v, fv, li, q, title, t_type = row
+
+                d['topic'][c].append((q, title, t_type, v))
+
+    return d
+
+
+def get_tf(kw, geo, tf):
+    """
+        Queries Trends for a time frame.  Returns a dictionary with
+        the resulting data.
+    """
+    pytrends = TrendReq(hl='en-US', tz=360, timeout=(2, 30))
+    if geo is not None:
+        pytrends.build_payload([kw], timeframe=tf, geo=geo)
+    else:
+        pytrends.build_payload([kw], timeframe=tf)
+
+    t = save_timeseries(kw, pytrends)
+    g = save_geo(kw, geo, pytrends)
+    r = save_related(kw, pytrends)
+
+    d = {'time': t, 'geo': g, 'related': r}
+    return d
+
+
+if len(sys.argv) != 3 and len(sys.argv) != 4:
+    print('usage: {} tf kw [geo]'.format(sys.argv[0]), file=sys.stderr)
+    sys.exit(1)
+
+tf = sys.argv[1]
+kw = sys.argv[2]
+geo = None
+
+if len(sys.argv) == 4:
+    geo = sys.argv[3]
+
+init_logger()
+if geo is None:
+    log.info("Received request for '%s' '%s'", tf, kw)
+else:
+    log.info("Received request for '%s' '%s' '%s'", tf, kw, geo)
+
+try:
+    print(json.dumps(get_tf(kw, geo, tf)))
+except ResponseError as e:
+    log.exception('')
+    d = {'error': {'code': int(e.response.status_code), 'msg': str(e)}}
+    print(json.dumps(d))
+    sys.exit(5)
+except:
+    log.exception('')
+    sys.exit(1)

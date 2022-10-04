@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Keyword difference{% endblock %}
+{% block body %}
+  Enter two request ids to show the keyword differences between them:
+  <form method="get">
+    <label for="a_id">From: </label>
+    <input id="a_id" name="a_id" type="text" value="{{ a_id }}">
+    {% if a_id and a_error %}
+      <span style="color: red">{{ a_error }}</span>
+    {% endif %}
+    <br>
+    <label for="b_id">To: </label>
+    <input id="b_id", name="b_id" type="text" value="{{ b_id }}">
+    {% if b_id and b_error %}
+      <span style="color: red">{{ b_error }}</span>
+    {% endif %}
+    <br>
+    <input type="submit" value="Show differences">
+{% endblock %}

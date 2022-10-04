@@ -1,0 +1,65 @@
+.Dd June 15, 2022
+.Dt SIFT_CLI 1
+.Os
+.Sh NAME
+.Nm sift_cli
+.Nd interface with SIFT database
+.Sh SYNOPSIS
+.Nm sift_cli
+.Cm command
+.Op Ar arguments
+.Sh DESCRIPTION
+.Nm
+is used to perform common operations on the SIFT database.
+This includes adding keywords manually and various tag related
+operations.
+.Pp
+The following commands exist:
+.Bl -tag -width Ds
+.It Cm add-query Ar q
+Adds a query keyword
+.Ar q .
+.It Cm add-topic Ar q Ar name Ar category
+Adds a topic keyword with topic string
+.Ar q
+and name
+.Ar name
+and category
+.Ar category .
+This keyword would canonically be displayed as
+.Dl Name (Category)
+If the topic does not yet exist, it is created.
+.It Cm add-keyword-tag Ar tag-name Ar tag-description
+Adds a new keyword tag called
+.Ar tag-name
+and description
+.Ar tag-description
+to the database.
+.It Cm add-keyword-to-tag Ar kw Ar tag-name
+Adds the tag
+.Ar tag-name
+to the keyword specified by
+.Ar kw .
+.Ar kw
+is expanded like in
+.Xr sift_queue 1 .
+.It Cm add-request-tag Ar tag-name
+Adds a new request tag called
+.Ar tag-name .
+.Xr sift_queue 1
+automatically creates request tags when they do not yet exist.
+.It Cm add-request-to-tag Ar rid Ar tag-name
+Tags the request with id
+.Ar rid
+with tag
+.Ar tag-name .
+.It Cm add-resolution-tags
+Adds tags to all requests with hourly or daily data.
+These tags are needed for stitching by
+.Xr sift_stitch 1 .
+Daily data is tagged with
+.Sq resolution:daily
+hourly data with
+.Sq resolution:hourly .
+More resolutions may be added in the future.
+.El

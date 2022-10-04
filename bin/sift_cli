@@ -1,0 +1,230 @@
+#! /usr/bin/python3
+import argparse
+import datetime
+import sys
+
+import psycopg2
+
+from sift import restore_timelabels
+
+
+# This is copied from sift_queue for simplicity.  If it ever gets to
+# complicated maintaining both versions, it should be moved into
+# sift.py
+def expand_keywords(cur, kws):
+    """
+        Expand the keyword kws into a list of keywords.  kws can be of
+        the form :k_id, %keyword_tag, a query string or a topic
+        identifier.
+    """
+    if kws[0] == ':':
+        k_id = int(kws[1:])
+        cur.execute('SELECT 1 FROM keywords WHERE k_id = %s', [k_id])
+        if cur.fetchone() is None:
+            print('No keyword with id {}'.format(k_id), file=sys.stderr)
+            sys.exit(1)
+
+        k_ids = [k_id]
+    elif kws[0] == '%':
+        tag_name = kws[1:]
+        cur.execute('''SELECT k_id
+                         FROM tags
+                         JOIN keywords_tags USING (tg_id)
+                        WHERE tg_name = %s''', (tag_name,))
+        k_ids = [r[0] for r in cur]
+    else:
+        cur.execute('SELECT k_id FROM keywords WHERE k_q = %s', (kws,))
+        k_ids = [cur.fetchone()[0]]
+
+    if len(k_ids) == 0:
+        print('No keywords for {}'.format(kws), file=sys.stderr)
+        sys.exit(1)
+
+    return k_ids
+
+
+def add_request_tag(cur, tag_name):
+    cur.execute('''INSERT INTO rtags (rtag_name) VALUES (%s)
+                   ON CONFLICT DO NOTHING''', (tag_name,))
+    cur.execute('SELECT rtag_id FROM rtags WHERE rtag_name = %s', (tag_name,))
+
+    return cur.fetchone()[0]
+
+
+def add_request_to_tag(cur, rid, tag_name):
+    cur.execute('SELECT rtag_id FROM rtags WHERE rtag_name = %s', (tag_name,))
+
+    rtag_id = cur.fetchone()[0]
+
+    cur.execute('SELECT 1 FROM request_tags WHERE rtag_id = %s AND r_id = %s', (rtag_id, rid))
+    if cur.fetchone():
+        return False
+
+    cur.execute('INSERT INTO request_tags (rtag_id, r_id) VALUES (%s, %s)', (rtag_id, rid))
+    return True
+
+
+def usage(s):
+    print('usage: {} {}'.format(sys.argv[0], s), file=sys.stderr)
+    sys.exit(1)
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument('command', type=str)
+parser.add_argument('args', nargs='*')
+arguments = parser.parse_args()
+
+command = arguments.command
+args = arguments.args
+argc = len(args)
+con = psycopg2.connect('')
+cur = con.cursor()
+
+if command == 'add-query':
+    if argc != 1:
+        usage('add-query q')
+
+    q = args[0]
+
+    cur.execute('SELECT k_id FROM keywords WHERE k_q = %s', (q,))
+    res = cur.fetchone()
+    if res is not None:
+        print('Keyword {} already exists with id {}'.format(q, res[0]), file=sys.stderr)
+        sys.exit(1)
+
+    cur.execute('''INSERT INTO keywords (k_q, k_title, kt_id, k_added)
+                        VALUES (%s, NULL, NULL, 'now') RETURNING k_id''', (q,))
+    k_id = cur.fetchone()[0]
+    con.commit()
+    print('Inserted query {} with id {}'.format(q, k_id))
+elif command == 'add-topic':
+    if argc != 3:
+        usage('add-topic q name category')
+
+    q = args[0]
+    name = args[1]
+    category = args[2]
+
+    cur.execute('SELECT k_id FROM keywords WHERE k_q = %s', (q,))
+    res = cur.fetchone()
+    if res is not None:
+        print('Keyword {} already exists with id {}'.format(q, res[0]), file=sys.stderr)
+        sys.exit(1)
+
+    cur.execute('SELECT kt_id FROM keyword_topics WHERE kt_name = %s', (category,))
+    res = cur.fetchone()
+    if res is None:
+        cur.execute('INSERT INTO keyword_topics(kt_name) VALUES(%s) RETURNING kt_id', (category,))
+        res = cur.fetchone()
+
+    assert res is not None
+    kt_id = res[0]
+
+    cur.execute('''INSERT INTO keywords (k_q, k_title, kt_id, k_added)
+                        VALUES (%s, %s, %s, 'now') RETURNING k_id''', (q, name, kt_id))
+    k_id = cur.fetchone()[0]
+    con.commit()
+
+    cur.execute('SELECT k_pretty FROM keywords_and_topics WHERE k_id = %s', (k_id,))
+    k_pretty = cur.fetchone()[0]
+
+    print('Inserted topic {} {} with id {}'.format(q, k_pretty, k_id))
+elif command == 'add-keyword-tag':
+    if argc != 2:
+        usage('add-keyword-tag tag-name tag-description')
+
+    tag_name = args[0]
+    tag_description = args[1]
+
+    cur.execute('SELECT tg_id FROM tags WHERE tg_name = %s', (tag_name,))
+    res = cur.fetchone()
+    if res:
+        print('Keyword tag {} already exists with id {}'.format(tag_name, res[0]))
+        sys.exit(0)
+
+    cur.execute('''INSERT INTO tags (tg_name, tg_description, tg_added) VALUES (%s, %s, 'now')''',
+                (tag_name, tag_description))
+    cur.execute('SELECT tg_id FROM tags WHERE tg_name = %s', (tag_name,))
+
+    tag_id = cur.fetchone()[0]
+
+    con.commit()
+    print('Inserted keyword tag {} with id {}'.format(tag_name, tag_id))
+elif command == 'add-keyword-to-tag':
+    if argc != 2:
+        usage('add-keyword-to-tag kw tag-name')
+
+    kws = expand_keywords(cur, args[0])
+    tag_name = args[1]
+
+    cur.execute('SELECT tg_id FROM tags WHERE tg_name = %s', (tag_name,))
+    res = cur.fetchone()
+
+    if res is None:
+        print('No tag called {}'.format(tag_name))
+        sys.exit(1)
+
+    tag_id = res[0]
+
+    for k_id in kws:
+        cur.execute('''INSERT INTO keywords_tags (k_id, tg_id) VALUES (%s, %s)
+                       ON CONFLICT DO NOTHING''', (k_id, tag_id))
+
+    con.commit()
+    print('Added tag {} to keywords {}'.format(tag_name, ', '.join(map(str, kws))))
+elif command == 'add-request-tag':
+    if argc != 1:
+        usage('add-request-tag tag-name')
+
+    tag_name = args[0]
+
+    cur.execute('SELECT rtag_id FROM rtags WHERE rtag_name = %s', (tag_name,))
+    res = cur.fetchone()
+    if res:
+        print('Request tag already exists with id {}'.format(res[0]))
+        sys.exit(0)
+
+    rtag_id = add_request_tag(cur, tag_name)
+    con.commit()
+    print('Inserted request tag {} with id {}'.format(tag_name, rtag_id))
+elif command == 'add-request-to-tag':
+    if argc != 2:
+        usage('add-request-to-tag rid tag-name')
+
+    rid = args[0]
+    tag_name = args[1]
+
+    if not add_request_to_tag(cur, rid, tag_name):
+        print('Request {} already has tag {}'.format(rid, tag_name))
+        sys.exit(0)
+
+    con.commit()
+    print('Added tag {} to request {}'.format(tag_name, rid))
+elif command == 'add-resolution-tags':
+    add_request_tag(cur, 'resolution:hourly')
+    add_request_tag(cur, 'resolution:daily')
+
+    cur.execute('SELECT r_id, r_tf_start, r_tf_end, t_v FROM requests JOIN trends_time USING (r_id)')
+
+    for r_id, start, end, t_v in cur.fetchall():
+        tl = restore_timelabels(start, end, t_v)
+
+        if len(tl) == 0:
+            continue
+
+        diff = tl[1] - tl[0]
+
+        if diff == datetime.timedelta(hours=1):
+            tag_name = 'resolution:hourly'
+        elif diff == datetime.timedelta(days=1):
+            tag_name = 'resolution:daily'
+        else:
+            continue
+
+        print('Adding {} to {}'.format(tag_name, r_id))
+        add_request_to_tag(cur, r_id, tag_name)
+
+    con.commit()
+else:
+    print('Unknown command {}'.format(command), file=sys.stderr)
+    sys.exit(1)

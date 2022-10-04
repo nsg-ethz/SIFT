@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Keyword {{ k_id }}{% endblock %}
+{% block body %}
+  <table>
+    <tr><td><b>Id</b></td><td>{{ k_id }}</td></tr>
+    <tr><td><b>Query</b></td><td>{{ k_q }}</td></tr>
+    <tr><td><b>Added</b></td><td>{{ k_added }}</td></tr>
+    {% if kt_name %}
+      <tr><td><b>Title</b></td><td>{{ k_title }}</td></tr>
+      <tr><td><b>Topic</b></td><td>{{ kt_name }}</td></tr>
+    {% endif %}
+    {% if ki_active %}
+      <tr><td><b>Active</b></td><td>{{ ki_active }}</td></tr>
+    {% endif %}
+    {% if ki_added %}
+      <tr><td><b>Added to keywords info</b></td><td>{{ ki_added }}</td></tr>
+    {% endif %}
+    {% if ki_note %}
+      <tr><td><b>Note</b></td><td>{{ ki_note }}</td></tr>
+    {% endif %}
+  </table>
+  <br>
+  {% if referred or refers %}
+    This keyword is most often
+    {% if referred %}
+      referred to by
+      <a href="{{ url_for('keyword_detailed', k_id=referred[0]) }}">{{ referred[1] }}</a>
+      ({{ referred[2] }} times)
+    {% endif %}
+    {% if referred and refers %}
+      and
+    {% endif %}
+    {% if refers %}
+      most often refers to
+      <a href="{{ url_for('keyword_detailed', k_id=refers[0]) }}">{{ refers[1] }}</a>
+      ({{ refers[2] }} times)
+    {% endif %}
+    .
+  {% endif %}
+  <br>
+  {% if k_count > 0 %}
+    Part of <a href="{{ url_for('keyword_detailed_requests', k_id=k_id) }}">{{ k_count }}</a>
+    requests (both completed and outstanding).
+  {% else %}
+    Keyword not used in any requests.
+  {% endif %}
+  <br>
+  {% if refers %}
+    This keyword has {{ outgoing[0] }} outgoing links to {{ outgoing[1] }} distinct keywords.
+  {% endif %}
+  {% if referred %}
+    This keyword has {{ incoming[0] }} incoming links from {{ incoming[1] }} distinct keywords.
+  {% endif %}
+  <br>
+  {% if tags %}
+    <h3>Associated tags</h3>
+    <ul>
+      {% for tg_id, tg_name in tags %}
+	<li><a href="{{ url_for('tag_detailed', tg_id=tg_id) }}">{{ tg_name }}</a>
+      {% endfor %}
+    </ul>
+  {% endif %}
+{% endblock %}

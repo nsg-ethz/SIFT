@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Requests{% endblock %}
+{% block body %}
+  Limit to requests with status
+  {% for s in status_list %}
+    {% if s == status %}
+      <b>{{ s }}</b>
+    {% else %}
+      <a href="{{ url_for('requests', status=s) }}">{{ s }}</a>
+    {% endif %}
+  {% endfor %}
+  {% if status %}
+      <br><a href="{{ url_for('requests') }}">Show all</a>
+  {% endif %}<br>
+  <a href="{{ url_for('rcomment') }}">Filter by comment</a>
+  <table>
+    <tr><th>Id<th>Geo<th>Start<th>End<th>Status<th>Keyword
+    {% for r in requests %}
+      <tr><td><a href="{{ url_for('request_detailed', r_id=r[0]) }}">{{ r[0] }}</a>
+	<td>{% if r[1] %}{{ r[2] }} ({{ r[1] }}){% else %}World{% endif %}
+      {% for td in r[3:5] %}
+        <td>{{ td }}</td>
+      {% endfor %}
+      <td {% if r[5] == 'done' %}class="td-status-done"{% endif %}>{{ r[5] }}</td>
+      <td><a href="{{ url_for('keyword_detailed', k_id=r[7]) }}">{{ r[6] }}</a>
+    {% endfor %}
+  </table>
+{% endblock %}

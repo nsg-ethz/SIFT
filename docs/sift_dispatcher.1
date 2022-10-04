@@ -1,0 +1,40 @@
+.Dd June 9, 2022
+.Dt SIFT_DISPATCHER 1
+.Os
+.Sh NAME
+.Nm sift_dispatcher
+.Nd executes requests to Google Trends using one or more fetchers
+.Sh SYNOPSIS
+.Nm sift_dispatcher
+.Op Fl -exit
+.Op Fl -local
+.Sh DESCRIPTION
+.Nm
+uses multiple fetcher to executes requests queued by
+.Xr sift_queue 1 .
+Fetchers are specified in a
+.Pa fetchers.json
+file.
+Fetchers can be either executed directy, via
+.Xr sudo 8
+or on remote hosts via SSH.
+.Pp
+The following options exist:
+.Bl -tag -width Ds
+.It Fl -exit
+Exit when there is nothing to do.
+This does not mean that all requests are done, e.g. some might just
+not be available yet or caused an error.
+.It Fl -local
+Don't use
+.Pa fetchers.json
+but instead execute
+.Xr sift_fetcher 1
+locally under the same user.
+.El
+.Pp
+.Nm
+logs to stdout and to a file called
+.Pa distpatcher-hostname.log
+where hostname is replaced by the hostname of the machine it is
+executed on.

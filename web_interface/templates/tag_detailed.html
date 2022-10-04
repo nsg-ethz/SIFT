@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Tag {{ tg_id }}{% endblock %}
+{% block body %}
+  <table>
+    <tr><td><b>Id</b></td><td>{{ tg_id }}</td></tr>
+    <tr><td><b>Name</b></td>
+      <td>{{ tg_name }}</td></tr>
+    <tr><td><b>Description</b></td>
+      <td>{{ tg_description }}</td></tr>
+    <tr><td><b>Added</b></td>
+      <td>{{ tg_added }}</td></tr>
+  </table>
+  {% if keywords | length > 0 %}
+    <h3>Keywords</h3>
+    <ul>
+    {% for k_id, k_pretty in keywords %}
+      <li><a href="{{ url_for('keyword_detailed', k_id=k_id) }}">{{ k_pretty }}</a>
+    {% endfor %}
+    </ul>
+  {% else %}
+    No keywords associated with this tag.
+  {% endif %}
+{% endblock %}

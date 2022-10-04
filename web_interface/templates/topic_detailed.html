@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Topic {{ tp_id }}{% endblock %}
+{% block body %}
+  <table>
+    <tr><td><b>Id</b></td><td>{{ kt_id }}</td></tr>
+    <tr><td><b>Name</b></td>
+      <td>{{ kt_name }}</td></tr>
+  </table>
+  {% if keywords | length > 0 %}
+    <h3>Keywords</h3>
+    <ul>
+    {% for k_id, k_pretty in keywords %}
+      <li><a href="{{ url_for('keyword_detailed', k_id=k_id) }}">{{ k_pretty }}</a>
+    {% endfor %}
+    </ul>
+  {% else %}
+    No keywords associated with this topic.
+  {% endif %}
+{% endblock %}

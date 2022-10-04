@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Keyword Count{% endblock %}
+{% block body %}
+  <h3>Table of Contents</h3>
+  <ol>
+    <li><a href="#same">Keywords having same name and catgegory but different ID</a></li>
+    <li><a href="#ntimes">Count of keywords occuring exactly n times</a></li>
+    <li><a href="#kwlinks">How often each keyword appears</a></li>
+  </ol>
+
+  <h3 id="same">Keywords which have the same name and category but different Freebase/Google IDs</h3>
+  <table>
+    {% for k_pretty, k_ids in kwdouble %}
+      <tr class="{{ loop.cycle('tr-lightgray', '') }}"><td>{{ k_pretty }}</td><td>
+	  {% for k_id, k_q in k_ids %}
+	    <a href="{{ url_for('keyword_detailed', k_id=k_id) }}">{{ k_q }}</a>
+	  {% endfor %}
+      </td></tr>
+    {% endfor %}
+  </table>
+  <h3 id="ntimes">For a given n how many keywords occur exactly n times?</h3>
+  <table>
+    <tr><th>n</th><th>Number of keywords with n occurrences</th></tr>
+    {% for k in kwstat %}
+      <tr class="{{ loop.cycle('tr-lightgray', '') }}"><td>{{ k }}</td><td>{{ kwstat[k] }}</td></tr>
+    {% endfor %}
+  </table>
+  <h3 id="kwlinks">For each keyword, how often does it occur? (Top 1000 entries)</h3>
+  {% if rising %}
+    <a href="{{ url_for('keyword_statistics') }}">Order by top (desc)</a>
+  {% else %}
+    <a href="{{ url_for('keyword_statistics', rising=1) }}">Order by rising (desc)</a>
+  {% endif %}
+  <table>
+    <thead><th>Keyword</th><th>Top Links</th><th>Rising Links</th></thead>
+    {% for k_id, kw, count, c2 in kws %}
+      <tr class="{{ loop.cycle('tr-lightgray', '') }}">
+	<td><a href="{{ url_for('keyword_detailed', k_id=k_id) }}">{{ kw }}</a></td>
+	<td>{{ count }}</td><td>{{ c2 }}</td>
+      </tr>
+    {% endfor %}
+  </table>
+{% endblock %}

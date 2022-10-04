@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Requests by comment{% endblock %}
+{% block body %}
+  <ul>
+  {% for note, count in notes %}
+    <li>
+      {% if q == note %}
+	<b>{{ note }} ({{ count }})</b>
+      {% else %}
+	<a href="{{ url_for('rcomment', q=note) }}">{{ note }} ({{ count }})</a>
+      {% endif %}
+  {% endfor %}
+  </ul>
+  {% if res %}
+    <h3>Requests with note '{{ q }}'</h3>
+    <ul>
+      {% for r_id in res %}
+	<li><a href="{{ url_for('request_detailed', r_id=r_id) }}">{{ r_id }}</a>
+      {% endfor %}
+    </ul>
+  {% endif %}
+{% endblock %}

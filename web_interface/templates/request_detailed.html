@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Request {{ r_id }}{% endblock%}
+{% block body %}
+  <table>
+    <tr><td><b>Who</b></td><td>{{ r[0] }}</td>
+    <tr><td><b>Request made at</b></td><td>{{ r[1] }}</td>
+    <tr><td><b>Type</b></td><td>{{ r[2] }}</td>
+    <tr><td><b>API to use</b></td><td>{{ r[3] }}</td>
+    <tr><td><b>Not before</b></td><td>{{ r[4] }}</td>
+    <tr><td><b>Not after</b></td><td>{{ r[5] }}</td>
+    <tr><td><b>Priority</b></td><td>{{ r[6] }}</td>
+    {% if r[7] %}
+	<tr><td><b>Geography</b></td><td>{{ r[8] }} ({{ r[7] }})</td>
+    {% else %}
+	<tr><td><b>Geography</b></td><td>Not limited</td>
+    {% endif %}
+    <tr><td><b>Timeframe</b></td><td>{{ r[9] }} - {{ r[10] }}</td>
+    <tr><td><b>Keyword</b></td><td><a href="{{ url_for('keyword_detailed', k_id=r[17]) }}">{{ r[16] }}</a></td>
+    <tr><td><b>Status</b></td><td>{{ r[11] }}</td>
+    <tr><td><b>Fetcher</b></td>
+      {% if r[13] or r[14] %}
+	<td>{{ r[13] }} on host {{ r[14] }}</td>
+      {% else %}
+	<td>None</td>
+      {% endif %}
+    <tr><td><b>API used</b></td><td>{{ r[18] }}</td>
+    <tr><td><b>Fetched at</b></td><td>{{ r[12] }}</td>
+    {% if r[15] %}
+      <tr><td><b>Note</b></td><td>{{ r[15] }}</td>
+    {% endif %}
+    {% if trends_time %}
+      <tr><td><b>Timeframe Ids</b></td>
+	<td><a href="{{ url_for('timeframe_detailed', t_id=trends_time) }}">{{ trends_time }}</a></td>
+    {% endif %}
+  </table>
+  {% if pd_peak %}
+    <i>This is a fetch to gain more information about a peak at {{ pd_peak }}.</i>
+  {% endif %}
+
+  <h3>Geographic information</h3>
+  <i>Note: Countries with a value of zero are omitted</i>
+  <table>
+    <tr><th>Name<th>ISO<th>Keyword<th>Scope<th>Value</tr>
+    {% for name, iso, pretty, scope, v in trends_geo %}
+      <tr><td>{{ name }}<td>{{ iso }}<td>{{ pretty }}<td>{{ scope }}<td>{{ v }}</tr>
+    {% endfor %}
+  </table>
+
+  <h3>Keyword references</h3>
+  {% for ref in related %}
+    {% if loop.first or ref[0] != loop.previtem[0] %}
+      <h4>{{ ref[0] }}</h4>
+    {% endif %}
+    <a href="{{ url_for('keyword_detailed', k_id=ref[2]) }}">{{ ref[1] }}</a>
+    {% if ref[3] %} (top) {% else %} (rising) {% endif %}
+    <br>
+  {% endfor %}
+{% endblock %}

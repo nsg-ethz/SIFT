@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Tsearch{% endblock %}
+{% block body %}
+  <h3>Search for timeframes</h3>
+  <form method="GET">
+    <label>Time:</label><input type="text" name="time" value="{{ time }}"><br>
+    <label>Keyword:</label>
+    <select name="k_id">
+      <option value="" {% if not k_id %}selected{% endif %}>Select keyword</option>
+      {% for k, k_pretty in keywords %}
+	<option value="{{ k }}" {% if k_id == k %}selected{% endif %}>{{ k_pretty }}</option>
+      {% endfor %}
+    </select><br>
+    <label>Location:</label>
+    <select name="geo">
+      <option value="" {% if not geo %}selected{% endif %}>Select location</option>
+      <option value="world" {% if geo == 'world' %}selected{% endif %}>World</option>
+      {% for l_iso, l_name in locations %}
+	<option value="{{ l_iso }}" {% if geo == l_iso %}selected{% endif %}>
+	  {{ l_name }} ({{ l_iso }})
+	</option>
+      {% endfor %}
+    </select><br>
+    <label>Longer than:</label>
+    <select name="duration">
+      <option value="" {% if not duration %}selected{% endif %}>Select duration</option>
+      {% for t, s in (('4h', 14400), ('8h', 28800), ('12h', 43200), ('7d', 604800)) %}
+	<option value="{{ s }}" {% if duration == s %}selected{% endif %}>{{ t }}</option>
+      {% endfor %}
+    </select><br>
+    <input type="submit" value="Search">
+  </form>
+  {% if results %}
+    <table>
+      <thead><th>Id<th>Start<th>End<th>Keyword<th>Location<th>Data?</thead>
+      {% for start, end, id, data, k_pretty, l_iso in results %}
+	<tr><td><a href="{{ url_for('timeframe_detailed', t_id=id) }}">{{ id }}</a>
+	  <td>{{ start }}<td>{{ end }}<td>{{ k_pretty }}<td>{{ l_iso }}<td>{{ data }}</tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    {% if geo or k_id or time %}
+      Query didn't return any results
+    {% endif %}
+  {% endif %}
+{% endblock %}
