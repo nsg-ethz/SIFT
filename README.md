@@ -4,7 +4,25 @@ This repository contains SIFT codebase. SIFT is a scalable architecture to extra
 
 ## Bibtex
 
-TBA
+```bibtex
+@inproceedings{10.1145/3517745.3561428,
+author = {Kirci, Ege Cem and Vahlensieck, Martin and Vanbever, Laurent},
+title = {"Is My Internet down?": Sifting through User-Affecting Outages with Google Trends},
+year = {2022},
+isbn = {9781450392594},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi.org/10.1145/3517745.3561428},
+doi = {10.1145/3517745.3561428},
+abstract = {What are the worst outages for Internet users? How long do they last, and how wide are they? Such questions are hard to answer via traditional outage detection and analysis techniques, as they conventionally rely on network-level signals and do not necessarily represent users' perceptions of connectivity.We present SIFT, a detection and analysis tool for capturing user-affecting Internet outages. SIFT leverages users' aggregated web search activity to detect outages. Specifically, SIFT starts by building a timeline of users' interests in outage-related search queries. It then analyzes this timeline looking for spikes of user interest. Finally, SIFT characterizes these spikes in duration, geographical extent, and simultaneously trending search terms which may help understand root causes, such as power outages or associated ISPs.We use SIFT to collect more than 49 000 Internet outages in the United States over the last two years. Among others, SIFT reveals that user-affecting outages: (i) do not happen uniformly: half of them originate from 10 states only; (ii) can affect users for a long time: 10\% of them last at least 3 hours; and (iii) can have a broad impact: 11\% of them simultaneously affect at least 10 distinct states. SIFT annotations also reveal a perhaps overlooked fact: outages are often caused by climate and/or power-related issues.},
+booktitle = {Proceedings of the 22nd ACM Internet Measurement Conference},
+pages = {290–297},
+numpages = {8},
+keywords = {Google trends, internet outages, data mining, anomaly detection},
+location = {Nice, France},
+series = {IMC '22}
+}
+```
 
 ## Contact
 
