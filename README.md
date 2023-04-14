@@ -100,6 +100,8 @@ Initialize the database using
 psql < sql/schema.sql
 ```
 
+and apply all the migrations in `sql/migrations`.
+
 ## Quickstart
 If you want to start fetching right away, you can load the database
 with the internet outage topic keyword and US states using
